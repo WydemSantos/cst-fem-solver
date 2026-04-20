@@ -16,7 +16,14 @@ def compute_area(coords):
     float
         Signed area of the triangle (positive if nodes are counter-clockwise).
     """
-    raise NotImplementedError
+    # Get the coordinates
+    x0,y0 = coords[0]
+    x1,y1 = coords[1]
+    x2,y2 = coords[2]
+
+    #Compute the area
+    area = 1/2*(x0*(y1-y2) + x1*(y2-y0) + x2*(y0-y1))
+    return area
 
 
 def compute_B(coords):
@@ -43,8 +50,30 @@ def compute_B(coords):
     The coefficients b_i and c_i come from cyclic permutations of the node coordinates.
     Refer to CIVL 537 Lecture Notes, Section 4.
     """
-    raise NotImplementedError
+    # Get the coordinates
+    x0,y0 = coords[0]
+    x1,y1 = coords[1]
+    x2,y2 = coords[2]
 
+    b0 = y1 - y2
+    b1 = y2 - y0
+    b2 = y0 - y1
+    
+    c0 =  x2 - x1
+    c1 =  x0 - x2
+    c2 =  x1 - x0
+
+    area = compute_area(coords)
+
+    if area <= 0:
+        raise ValueError("Triangle area must be positive. Check node ordering.")
+    
+    
+    B = (1/(2*area))*np.array([[b0, 0, b1, 0, b2, 0],
+                              [0, c0, 0, c1, 0, c2],
+                              [c0, b0, c1, b1, c2, b2]])
+
+    return B
 
 def compute_D(E, nu, mode="plane_stress"):
     """
@@ -70,7 +99,18 @@ def compute_D(E, nu, mode="plane_stress"):
     Plane strain: eps_zz = 0, eliminate sigma_zz from 3D Hooke's law.
     The resulting D matrices are different. Implement them based on the course notes.
     """
-    raise NotImplementedError
+    if mode == "plane_stress":
+        D = (E/(1-nu**2))*np.array([[1.0, nu, 0.0],
+                                    [nu, 1.0, 0.0],
+                                    [0.0, 0.0, (1-nu)/2]])
+    elif mode == "plane_strain":
+        D = (E*(1-nu)/((1+nu)*(1-2*nu)))*np.array([[1.0, nu/(1-nu), 0.0],
+                                                   [nu/(1-nu), 1.0, 0.0],
+                                                   [0.0, 0.0, (1-2*nu)/(2*(1-nu))]])
+    else:
+        raise ValueError('Selected mode not available. Must be "plane_strain" or "plane_stress"')
+
+    return D
 
 
 def compute_k(coords, D, thickness):
@@ -95,5 +135,12 @@ def compute_k(coords, D, thickness):
     -----
     Since B is constant over the element, the integral simplifies to
     a single multiplication (no numerical quadrature needed).
+
+
     """
-    raise NotImplementedError
+    B = compute_B(coords)
+    area = compute_area(coords)
+
+    k_e = thickness*area*(B.T @ D @ B)
+
+    return k_e
