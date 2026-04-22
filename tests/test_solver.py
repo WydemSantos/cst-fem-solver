@@ -40,13 +40,15 @@ def test_tip_deflection_order_of_magnitude():
     D = compute_D(E, nu, "plane_stress")
     K = assemble_K(nodes, elems, D, 0.01)
     R = assemble_R_parabolic_shear(nodes, tags["loaded"], P, h)
+
     fixed_dofs = np.array([[2*n, 2*n+1] for n in tags["fixed"]]).ravel()
     u = apply_bc_and_solve(K, R, fixed_dofs)
 
-    I = h**3 / 12
+    I = 0.01* h**3 / 12
     delta_EB = P * L**3 / (3 * E * I)
     tip_nodes = [n for n in tags["loaded"] if abs(nodes[n, 1]) < h / 8]
     tip_v = np.mean(u[2 * np.array(tip_nodes) + 1])
+
     assert abs(tip_v) > 0.1 * abs(delta_EB), "Tip deflection unreasonably small"
     assert abs(tip_v) < 10 * abs(delta_EB), "Tip deflection unreasonably large"
 

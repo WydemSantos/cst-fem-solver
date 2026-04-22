@@ -31,4 +31,32 @@ def apply_bc_and_solve(K, R, fixed_dofs):
         - Symmetry on y=0: fix v-DOFs of nodes on y=0
         - Symmetry on x=0: fix u-DOFs of nodes on x=0
     """
-    raise NotImplementedError
+    #Gets the number of DOFs
+    n_dof = K.shape[0]
+
+    #Turn fixed_dofs into an array of int type elements
+    fixed_dofs = np.array(fixed_dofs, dtype=int)
+
+    #Remove possible repetitive fixed DOFS
+    fixed_dofs = np.unique(fixed_dofs)
+
+    #Create the array with all DOFs
+    all_dofs = np.arange(n_dof, dtype=int)
+
+    #Remove the fixed_dofs
+    free_dofs = np.setdiff1d(all_dofs, fixed_dofs)
+    
+    #Gets only the rows and columns of the free DOFs
+    K_ff = K[free_dofs, :][:, free_dofs]
+    R_f = R[free_dofs]
+
+    #Initialize displacement vector
+    u = np.zeros(n_dof, dtype=float)
+
+    #Solve for displacement of free DOFs
+    u_f = spsolve(K_ff, R_f)
+
+    #Add the displacement of the DOFs free
+    u[free_dofs] = u_f
+
+    return u
