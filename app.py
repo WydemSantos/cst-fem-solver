@@ -128,8 +128,8 @@ with tab1:
         sort_idx = np.argsort(x_na)
 
         x_anal = np.linspace(0, L, 200)
-        v_timo = timoshenko_deflection(x_anal, L, h, P, E, nu)
-        v_eb = euler_bernoulli_deflection(x_anal, L, P, E, h)
+        v_timo = timoshenko_deflection(x_anal, L, h, P, E, nu, t)
+        v_eb = euler_bernoulli_deflection(x_anal, L, P, E, h, t)
 
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(x=x_na[sort_idx], y=v_na[sort_idx],
@@ -151,7 +151,7 @@ with tab1:
         sig_xx_bot = stresses[bot_elems, 0]
         sort_b = np.argsort(x_bot)
 
-        sig_xx_anal = timoshenko_sigma_xx(x_anal, -h/2, L, P, h)
+        sig_xx_anal = timoshenko_sigma_xx(x_anal, -h/2, L, P, h, t)
 
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(x=x_bot[sort_b], y=sig_xx_bot[sort_b],
@@ -177,7 +177,7 @@ with tab1:
         sort_m = np.argsort(y_mid)
 
         y_anal = np.linspace(-h/2, h/2, 200)
-        tau_anal = timoshenko_tau_xy(y_anal, P, h)
+        tau_anal = timoshenko_tau_xy(y_anal, P, h, t)
 
         fig4 = go.Figure()
         fig4.add_trace(go.Scatter(x=tau_mid[sort_m], y=y_mid[sort_m],
