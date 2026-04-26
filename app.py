@@ -380,7 +380,13 @@ with tab3:
                 cent_hc = np.mean(nodes_hc[elems_hc], axis=1)
                 r_hc = np.sqrt(cent_hc[:, 0]**2 + cent_hc[:, 1]**2)
                 th_hc = np.arctan2(cent_hc[:, 1], cent_hc[:, 0])
-                near = r_hc < R_h * 1.3
+                near = r_hc < R_h * 1.6
+
+                if not np.any(near):
+                    st.warning(f"No near-hole elements found for nr={nr}; skipping this mesh.")
+                    progress2.progress((idx + 1) / len(rad_sizes))
+                    continue
+                
                 sig_tt_hc = (stresses_hc[near, 0] * np.sin(th_hc[near])**2
                              + stresses_hc[near, 1] * np.cos(th_hc[near])**2
                              - 2 * stresses_hc[near, 2] * np.sin(th_hc[near]) * np.cos(th_hc[near]))
