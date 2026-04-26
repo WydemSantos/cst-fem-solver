@@ -47,15 +47,58 @@ tab1, tab2, tab3 = st.tabs(["🔧 Cantilever Beam", "🕳️ Plate with Hole",
 # ══════════════════════════════════════════════
 # Helper: plot mesh
 # ══════════════════════════════════════════════
-def plot_mesh(nodes, elements, title="Mesh Preview"):
+
+def plot_mesh(nodes, elements, boundary_tags=None, title="Mesh Preview", show_tags=False):
     fig = go.Figure()
+
+    # Element edges
     for tri in elements:
         pts = nodes[list(tri) + [tri[0]]]
-        fig.add_trace(go.Scatter(x=pts[:, 0], y=pts[:, 1],
-                                 mode='lines', line=dict(color='steelblue', width=0.5),
-                                 showlegend=False))
-    fig.update_layout(yaxis_scaleanchor="x", title=title,
-                      height=350, margin=dict(l=0, r=0, t=30, b=0))
+        fig.add_trace(go.Scatter(
+            x=pts[:, 0],
+            y=pts[:, 1],
+            mode="lines",
+            line=dict(color="steelblue", width=0.5),
+            showlegend=False
+        ))
+
+    # Boundary tags
+    if show_tags and boundary_tags is not None:
+        tag_styles = {
+            "fixed": dict(color="red", symbol="square", name="fixed"),
+            "loaded": dict(color="green", symbol="circle", name="loaded"),
+            "hole": dict(color="purple", symbol="circle-open", name="hole"),
+            "right": dict(color="green", symbol="circle", name="right"),
+            "sym_x": dict(color="orange", symbol="diamond", name="sym_x"),
+            "sym_y": dict(color="darkorange", symbol="cross", name="sym_y"),
+        }
+
+        for tag, node_ids in boundary_tags.items():
+            if tag not in tag_styles or len(node_ids) == 0:
+                continue
+
+            pts = nodes[np.array(node_ids, dtype=int)]
+            style = tag_styles[tag]
+
+            fig.add_trace(go.Scatter(
+                x=pts[:, 0],
+                y=pts[:, 1],
+                mode="markers",
+                marker=dict(
+                    color=style["color"],
+                    symbol=style["symbol"],
+                    size=7
+                ),
+                name=style["name"]
+            ))
+
+    fig.update_layout(
+        yaxis_scaleanchor="x",
+        title=title,
+        height=350,
+        margin=dict(l=0, r=0, t=30, b=0)
+    )
+
     return fig
 
 
@@ -89,6 +132,11 @@ def plot_deformed_mesh(nodes, elements, u, stresses, scale, title="Deformed Mesh
 # ══════════════════════════════════════════════
 with tab1:
     st.subheader("Cantilever Plate — Parabolic Tip Shear")
+    st.info(
+        "Validation problem: a cantilever plate fixed at x = 0 and loaded by a "
+        "parabolic shear traction at x = L. The FEA deflection and stress fields "
+        "are compared with Timoshenko and Euler-Bernoulli beam solutions."
+    )
 
     col_input, col_mesh = st.columns([1, 2])
     with col_input:
@@ -98,13 +146,22 @@ with tab1:
         nx = st.slider("Elements in x", 2, 32, 8, key="cant_nx")
         ny = st.slider("Elements in y", 2, 16, 4, key="cant_ny")
         solve_cant = st.button("Solve Cantilever", type="primary")
+        
+        show_tags_c = st.checkbox("Show boundary tags", value=False, key="cant_show_tags")
 
     # Mesh preview
     nodes_c, elems_c, tags_c = generate_rect_mesh(L, h, nx, ny)
     with col_mesh:
-        st.plotly_chart(plot_mesh(nodes_c, elems_c,
-                        f"Mesh: {len(nodes_c)} nodes · {len(elems_c)} elements"),
-                        use_container_width=True)
+        st.plotly_chart(
+    plot_mesh(
+        nodes_c,
+        elems_c,
+        tags_c,
+        f"Mesh: {len(nodes_c)} nodes · {len(elems_c)} elements",
+        show_tags_c
+    ),
+    use_container_width=True
+)
 
     if solve_cant:
         with st.spinner("Assembling and solving..."):
@@ -130,6 +187,23 @@ with tab1:
         x_anal = np.linspace(0, L, 200)
         v_timo = timoshenko_deflection(x_anal, L, h, P, E, nu, t)
         v_eb = euler_bernoulli_deflection(x_anal, L, P, E, h, t)
+
+        #Metrics: Cantilever validation
+        loaded_nodes = np.array(tags_c["loaded"])
+        tip_node = loaded_nodes[np.argmax(nodes_c[loaded_nodes, 0])]
+
+        # Use nodes near the neutral axis at the loaded edge
+        tip_ns = [n for n in tags_c["loaded"]
+                  if abs(nodes_c[n, 1]) < h / (2 * ny) + 1e-10]
+
+        tip_v = np.mean(u[2 * np.array(tip_ns) + 1])
+        tip_timo = timoshenko_deflection(L, L, h, P, E, nu, t)
+
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("Tip deflection FEA", f"{tip_v:.3e} m")
+        col_m2.metric("Timoshenko", f"{tip_timo:.3e} m")
+        col_m3.metric("Relative error", f"{abs(tip_v - tip_timo) / abs(tip_timo):.2%}")
+
 
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(x=x_na[sort_idx], y=v_na[sort_idx],
@@ -162,10 +236,22 @@ with tab1:
         st.plotly_chart(fig2, use_container_width=True)
 
         # ── Plot 3: Deformed mesh with von Mises ──
-        st.markdown("#### Deformed Mesh — Von Mises Stress")
+        st.markdown("#### Original vs Deformed Mesh — Von Mises Stress")
         scale = st.slider("Deformation scale", 1, 500, 100, key="cant_scale")
-        st.plotly_chart(plot_deformed_mesh(nodes_c, elems_c, u, stresses, scale),
-                        use_container_width=True)
+
+        col_orig, col_def = st.columns(2)
+
+        with col_orig:
+            st.plotly_chart(
+                plot_mesh(nodes_c, elems_c, tags_c, "Original Mesh", show_tags=False),
+                use_container_width=True
+            )
+
+        with col_def:
+            st.plotly_chart(
+                plot_deformed_mesh(nodes_c, elems_c, u, stresses, scale, "Deformed Mesh"),
+                use_container_width=True
+            )
 
         # ── Plot 4: τ_xy across beam depth at mid-span ──
         st.markdown("#### τ_xy across beam depth at mid-span (x ≈ L/2)")
@@ -211,6 +297,12 @@ with tab1:
 # ══════════════════════════════════════════════
 with tab2:
     st.subheader("Plate with Circular Hole — Kirsch Validation")
+    st.info(
+        "Validation problem: a quarter plate with a circular hole, modeled using "
+        "symmetry boundary conditions. The stress concentration around the hole "
+        "is compared with the Kirsch analytical solution, where Kt = 3."
+    )
+
 
     col_input2, col_mesh2 = st.columns([1, 2])
     with col_input2:
@@ -223,12 +315,17 @@ with tab2:
         n_ang = st.slider("Angular divisions", 4, 24, 12, key="hole_nang")
         solve_hole = st.button("Solve Plate with Hole", type="primary")
 
+        show_tags_h = st.checkbox("Show boundary tags", value=False, key="hole_show_tags")
+
     # Mesh preview
     nodes_h, elems_h, tags_h = generate_plate_with_hole_mesh(W, H, R, n_rad, n_ang)
     with col_mesh2:
-        st.plotly_chart(plot_mesh(nodes_h, elems_h,
-                        f"Mesh: {len(nodes_h)} nodes · {len(elems_h)} elements"),
-                        use_container_width=True)
+        st.plotly_chart(
+    plot_mesh(
+        nodes_h,
+        elems_h,
+        tags_h, f"Mesh: {len(nodes_h)} nodes · {len(elems_h)} elements",
+        show_tags_h), use_container_width=True)
 
     if solve_hole:
         with st.spinner("Assembling and solving..."):
@@ -265,6 +362,14 @@ with tab2:
                       + sig_yy_near * np.cos(theta_near)**2
                       - 2 * tau_xy_near * np.sin(theta_near) * np.cos(theta_near))
 
+
+        # Metrics CST with a Hole
+        kt_fea = np.max(sig_tt_fea) / sigma_inf
+
+        col_h1, col_h2, col_h3 = st.columns(3)
+        col_h1.metric("FEA max σθθ/σ∞", f"{kt_fea:.2f}")
+        col_h2.metric("Kirsch Kt", "3.00")
+        col_h3.metric("Relative error", f"{abs(kt_fea - 3.0) / 3.0:.2%}")
         theta_anal = np.linspace(0, np.pi/2, 200)
         _, sig_tt_anal, _ = kirsch_stress_polar(R, theta_anal, R, sigma_inf)
 
@@ -279,8 +384,7 @@ with tab2:
         fig5.update_layout(xaxis_title="θ (degrees)", yaxis_title="σ_θθ / σ∞", height=400)
         st.plotly_chart(fig5, use_container_width=True)
 
-        st.info(f"FEA max σ_θθ / σ∞ = {np.max(sig_tt_fea) / sigma_inf:.2f}  "
-                f"(Kirsch exact = 3.00)")
+        st.info(f"FEA max σ_θθ / σ∞ = {kt_fea:.2f}  (Kirsch exact = 3.00)")
 
         # ── Plot 6: σ_xx along x-axis (θ=0) ──
         st.markdown("#### σ_xx along x-axis (y ≈ 0, showing stress decay from hole)")
@@ -314,7 +418,13 @@ with tab2:
 # ══════════════════════════════════════════════
 with tab3:
     st.subheader("h-Refinement Convergence")
-
+    st.info(
+        "This tab evaluates h-refinement convergence and volumetric locking. "
+        "The convergence study checks whether the error decreases as the mesh is "
+        "refined. The locking study shows how CST elements become artificially "
+        "stiff in plane strain as Poisson's ratio approaches 0.5."
+    )
+    
     conv_col1, conv_col2 = st.columns(2)
 
     with conv_col1:
@@ -323,7 +433,7 @@ with tab3:
             mesh_sizes = [2, 4, 8, 16, 32]
             D_conv = compute_D(E, nu, mode_key)
             L_c, h_c, P_c = 1.0, 0.25, 6000.0
-            tip_exact = timoshenko_deflection(L_c, L_c, h_c, P_c, E, nu)
+            tip_exact = timoshenko_deflection(L_c, L_c, h_c, P_c, E, nu, t)
             n_elems_list, errors = [], []
 
             progress = st.progress(0)
@@ -386,7 +496,7 @@ with tab3:
                     st.warning(f"No near-hole elements found for nr={nr}; skipping this mesh.")
                     progress2.progress((idx + 1) / len(rad_sizes))
                     continue
-                
+
                 sig_tt_hc = (stresses_hc[near, 0] * np.sin(th_hc[near])**2
                              + stresses_hc[near, 1] * np.cos(th_hc[near])**2
                              - 2 * stresses_hc[near, 2] * np.sin(th_hc[near]) * np.cos(th_hc[near]))
@@ -431,7 +541,7 @@ with tab3:
             cond_numbers.append(cond)
 
             u_l = apply_bc_and_solve(K_l, R_l, fd_l)
-            tip_exact_l = timoshenko_deflection(L_l, L_l, h_l, P_l, E, nu_val)
+            tip_exact_l = timoshenko_deflection(L_l, L_l, h_l, P_l, E, nu_val,t)
             tip_ns_l = [n for n in tags_l["loaded"]
                         if abs(nodes_l[n, 1]) < h_l / (2 * ny_l) + 1e-10]
             tip_v_l = np.mean(u_l[2 * np.array(tip_ns_l) + 1])
